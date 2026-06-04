@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  AUTHOR
+  ADMIN
+}
+
+enum BookStatus {
+  DRAFT
+  IN_PRODUCTION
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_AUTHOR
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum TicketCategory {
+  ROYALTY_PAYMENTS
+  ISBN_METADATA
+  PRINTING_QUALITY
+  DISTRIBUTION_AVAILABILITY
+  BOOK_STATUS_PRODUCTION
+  GENERAL_INQUIRY
+}
+
+enum Department {
+  FINANCE
+  PRODUCTION
+  DISTRIBUTION
+  METADATA
+  SUPPORT
+}
+
+model User {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  email        String        @unique
+  passwordHash String
+  role         Role          @default(AUTHOR)
+  avatarUrl    String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  books        Book[]
+  tickets      Ticket[]      @relation("AuthorTickets")
+  assigned     Assignment[]  @relation("AdminAssignments")
+  responses    TicketResponse[]
+  notes        InternalNote[]
+  notifications Notification[]
+  transactions Transaction[]
+}
+
+model Book {
+  id              String     @id @default(auto()) @map("_id") @db.ObjectId
+  authorId        String     @db.ObjectId
+  title           String
+  isbn            String     @unique
+  genre           String
+  publicationDate DateTime?
+  status          BookStatus @default(IN_PRODUCTION)
+  mrp             Float
+  copiesSold      Int        @default(0)
+  royaltyEarned   Float      @default(0)
+  royaltyPaid     Float      @default(0)
+  royaltyPending  Float      @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  author          User       @relation(fields: [authorId], references: [id])
+  tickets         Ticket[]
+}
+
+model Ticket {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  authorId      String          @db.ObjectId
+  bookId        String?         @db.ObjectId
+  subject       String
+  description   String
+  attachmentUrl String?
+  status        TicketStatus    @default(OPEN)
+  priority      TicketPriority  @default(MEDIUM)
+  category      TicketCategory  @default(GENERAL_INQUIRY)
+  escalated     Boolean         @default(false)
+  department    Department?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  resolvedAt    DateTime?
+  author        User            @relation("AuthorTickets", fields: [authorId], references: [id])
+  book          Book?           @relation(fields: [bookId], references: [id])
+  responses     TicketResponse[]
+  notes         InternalNote[]
+  assignments   Assignment[]
+  aiAnalysis    AiAnalysis?
+  statusHistory StatusHistory[]
+}
+
+model TicketResponse {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId  String   @db.ObjectId
+  authorId  String   @db.ObjectId
+  message   String
+  isAiDraft Boolean  @default(false)
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  author    User     @relation(fields: [authorId], references: [id])
+}
+
+model InternalNote {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId  String   @db.ObjectId
+  authorId  String   @db.ObjectId
+  note      String
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  author    User     @relation(fields: [authorId], references: [id])
+}
+
+model Assignment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId  String   @db.ObjectId
+  adminId   String   @db.ObjectId
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  admin     User     @relation("AdminAssignments", fields: [adminId], references: [id])
+}
+
+model AiAnalysis {
+  id                    String         @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId              String         @unique @db.ObjectId
+  summary               String
+  category              TicketCategory
+  categoryConfidence    Float
+  priority              TicketPriority
+  priorityConfidence    Float
+  escalationRequired    Boolean
+  department            Department
+  suggestedActions      String[]
+  draftResponse         String
+  retrievedContext      Json
+  serviceAvailable      Boolean        @default(true)
+  warning               String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  ticket                Ticket         @relation(fields: [ticketId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model StatusHistory {
+  id        String       @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId  String       @db.ObjectId
+  from      TicketStatus?
+  to        TicketStatus
+  createdAt DateTime     @default(now())
+  ticket    Ticket       @relation(fields: [ticketId], references: [id])
+}
+
+model Transaction {
+  id              String            @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String            @db.ObjectId
+  stripeSessionId String            @unique
+  serviceName     String
+  amount          Float
+  currency        String            @default("inr")
+  status          TransactionStatus @default(PENDING)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  user            User              @relation(fields: [userId], references: [id])
+}
