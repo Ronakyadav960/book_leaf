@@ -1,9 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
-import { ChromaClient } from "chromadb";
-import { env } from "../config/env.js";
 import { chunkDocument } from "./chunk.js";
 import { EmbeddingService } from "./embedding.service.js";
+import { prisma } from "../config/prisma.js";
 
 async function main() {
   const kbDir = path.resolve(process.cwd(), "../../knowledge-base");
@@ -17,17 +16,21 @@ async function main() {
   }
 
   const embeddings = await new EmbeddingService().embed(chunks.map((chunk) => chunk.text));
-  const client = new ChromaClient({ path: env.CHROMA_URL });
-  const collection = await client.getOrCreateCollection({ name: env.CHROMA_COLLECTION });
+  
+  await prisma.knowledgeChunk.deleteMany({});
+  console.log("Cleared existing knowledge chunks.");
 
-  await collection.upsert({
-    ids: chunks.map((chunk) => chunk.id),
-    documents: chunks.map((chunk) => chunk.text),
-    embeddings,
-    metadatas: chunks.map((chunk) => ({ topic: chunk.topic }))
+  const data = chunks.map((chunk, index) => ({
+    topic: chunk.topic,
+    text: chunk.text,
+    embedding: embeddings[index]
+  }));
+
+  await prisma.knowledgeChunk.createMany({
+    data
   });
 
-  console.log(`Ingested ${chunks.length} knowledge base chunks into ${env.CHROMA_COLLECTION}`);
+  console.log(`Ingested ${chunks.length} knowledge base chunks into MongoDB`);
 }
 
 main().catch((error) => {

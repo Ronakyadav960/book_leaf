@@ -1,6 +1,5 @@
-import { ChromaClient } from "chromadb";
-import { env } from "../config/env.js";
 import { EmbeddingService } from "./embedding.service.js";
+import { prisma } from "../config/prisma.js";
 
 export type RetrievedChunk = {
   id: string;
@@ -10,23 +9,39 @@ export type RetrievedChunk = {
 };
 
 export class RagService {
-  private client = new ChromaClient({ path: env.CHROMA_URL });
   private embeddings = new EmbeddingService();
 
   async retrieve(query: string, topK = 4): Promise<RetrievedChunk[]> {
     try {
-      const collection = await this.client.getOrCreateCollection({ name: env.CHROMA_COLLECTION });
       const [queryEmbedding] = await this.embeddings.embed([query]);
-      const result = await collection.query({
-        queryEmbeddings: [queryEmbedding],
-        nResults: topK
-      });
+      
+      const result = await prisma.knowledgeChunk.aggregateRaw({
+        pipeline: [
+          {
+            $vectorSearch: {
+              index: "vector_index",
+              path: "embedding",
+              queryVector: queryEmbedding,
+              numCandidates: 100,
+              limit: topK,
+            }
+          },
+          {
+            $project: {
+              _id: 1,
+              topic: 1,
+              text: 1,
+              score: { $meta: "vectorSearchScore" }
+            }
+          }
+        ]
+      }) as unknown as any[];
 
-      return (result.ids?.[0] ?? []).map((id, index) => ({
-        id: String(id),
-        topic: String(result.metadatas?.[0]?.[index]?.topic ?? "Knowledge Base"),
-        text: String(result.documents?.[0]?.[index] ?? ""),
-        distance: result.distances?.[0]?.[index]
+      return result.map((doc: any) => ({
+        id: doc._id.$oid ?? doc._id,
+        topic: doc.topic,
+        text: doc.text,
+        distance: doc.score
       }));
     } catch (error) {
       console.warn("RAG retrieval unavailable", error);

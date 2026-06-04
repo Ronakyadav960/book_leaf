@@ -15,8 +15,6 @@ const schema = z.object({
   FRONTEND_URL: z.string().url().default("http://localhost:3000"),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
-  CHROMA_URL: z.string().url().default("http://localhost:8000"),
-  CHROMA_COLLECTION: z.string().default("bookleaf_knowledge_base"),
   N8N_WEBHOOK_URL: optionalUrl,
   WEBHOOK_SHARED_SECRET: z.string().optional(),
   RAZORPAY_KEY_ID: z.string().optional(),
